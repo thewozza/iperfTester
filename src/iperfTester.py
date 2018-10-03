@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import csv
 import datetime
 import socket
+import time
 
 def check_ping(hostname):
 
@@ -72,7 +73,7 @@ if check_ping(remote):
         if next_time <= datetime.datetime.now():
             break
 
-    with open("/home/paul/" + currentDate + ".csv", "wb") as csvfile:
+    with open(currentDate + ".csv", "wb") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
         csvoutput.writerow(["local","remote","time","forwardSpeed","forwardRate","reverseSpeed","reverseRate"])
         for timeLoop, dictLoop in database.items():
