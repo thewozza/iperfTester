@@ -60,8 +60,7 @@ def get_ip():
 if len(sys.argv) == 1:
     print "Usage: " + sys.argv[0] + " [host] [duration(mins)] [port]"
     print "port parameter is optional, default is 5201"
-
-exit()
+    exit()
 
 # get the remote iperf endpoint as an argument
 remote = sys.argv[1]
@@ -91,7 +90,8 @@ except IndexError:
 # we don't allow ports less than 1024 or greater than 65335
 # because that would be dumb
 if (testPort <=1024) or (testPort >=65535):
-    testPort = 5201
+    print "Port must be between 1024 and 65535"
+    exit()
 
 # we use this to figure out if we're at the end of our test duration
 period = timedelta(minutes=totalDuration)
