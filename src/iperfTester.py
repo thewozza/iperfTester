@@ -103,7 +103,7 @@ local = get_ip()
 
 if check_ping(remote):
     # we use this as the CSV filename for output
-    currentDateTime = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0]
+    currentDateTime = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0].replace(':','.')
     
     # we use this as row data in the output
     currentDate = str((datetime.date(datetime.now())))
@@ -154,7 +154,7 @@ if check_ping(remote):
     
     # append to master CSV
     # this creates a single CSV for this host for all tests
-    with open(local + ".csv", "a") as csvfile:
+    with open(local + ".csv", "ab") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
         # iterate through the dictionary and
         # drop the value, key pairs as variables that we can reference
