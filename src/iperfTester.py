@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import subprocess, platform
 import sys
 from datetime import datetime, timedelta
