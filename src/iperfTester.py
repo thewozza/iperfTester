@@ -86,8 +86,11 @@ local = get_ip()
 
 if check_ping(remote):
     # we use this as the CSV filename for output
-    currentDate = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0]
+    currentDateTime = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0]
     
+    # we use this as row data in the output
+    currentDate = str((datetime.date(datetime.now())))
+
     # initialize the dictionary
     database = {}
     
@@ -100,11 +103,18 @@ if check_ping(remote):
         (database[currentTime]["reverseSpeed"],database[currentTime]["reverseRate"]) = iPerfTestActual(remote, "reverse",testPort)
     
     # output to CSV
-    with open(currentDate + ".csv", "wb") as csvfile:
+    with open(currentDateTime + ".csv", "wb") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
-        csvoutput.writerow(["local","remote","time","forwardSpeed","forwardRate","reverseSpeed","reverseRate"])
         for timeLoop, dictLoop in database.items():
-            csvoutput.writerow([local,remote,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
-
+            csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+    csvfile.close()
+    
+    # append to master CSV
+    with open(local + ".csv", "a") as csvfile:
+        csvoutput = csv.writer(csvfile, delimiter=',')
+        for timeLoop, dictLoop in database.items():
+            csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+    csvfile.close()
+    
 else:
     print "Not pingable, exiting"
