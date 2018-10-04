@@ -113,13 +113,23 @@ if check_ping(remote):
     
     # we stay in this loop unless the time exceeds 10m
     while next_time >= datetime.now():
+        # we use this as row data in the output
         currentTime = str(datetime.time(datetime.now())).split(".")[0]
+        
+        # initialize the dictionary INSIDE the dictionary
         database[currentTime] = {}
         
+        # this calls the iperfTestActual function
+        # the returned variables are the speed, and rate of the test
+        # those are dropped into the database[currentTime] nested dictonary
         (database[currentTime]["forwardSpeed"],database[currentTime]["forwardRate"]) = iPerfTestActual(remote, "forward",testPort)
         # print a dot so the user knows it is working
         sys.stdout.write('.')
         sys.stdout.flush()
+        
+        # this calls the iperfTestActual function
+        # the returned variables are the speed, and rate of the test
+        # those are dropped into the database[currentTime] nested dictonary
         (database[currentTime]["reverseSpeed"],database[currentTime]["reverseRate"]) = iPerfTestActual(remote, "reverse",testPort)
         # print a dot so the user knows it is working
         sys.stdout.write('.')
@@ -129,17 +139,30 @@ if check_ping(remote):
     print ""
     
     # output to CSV
+    # this creates a CSV for each test run
     with open(currentDateTime + ".csv", "wb") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
+        
+        # iterate through the dictionary and
+        # drop the value, key pairs as variables that we can reference
+        # timeLoop is just the current time
+        # dictLoop is a dictionary containing the results of the tests
         for timeLoop, dictLoop in database.items():
             csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+    # sanely close the file handler
     csvfile.close()
     
     # append to master CSV
+    # this creates a single CSV for this host for all tests
     with open(local + ".csv", "a") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
+        # iterate through the dictionary and
+        # drop the value, key pairs as variables that we can reference
+        # timeLoop is just the current time
+        # dictLoop is a dictionary containing the results of the tests
         for timeLoop, dictLoop in database.items():
             csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+    # sanely close the file handler
     csvfile.close()
     
 else:
