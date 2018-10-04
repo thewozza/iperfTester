@@ -57,6 +57,7 @@ def get_ip():
         s.close()
     return IP
 
+# die with instructions if someone calls this with no arguments
 if len(sys.argv) == 1:
     print "Usage: " + sys.argv[0] + " [host] [duration(mins)] [port]"
     print "port parameter is optional, default is 5201"
@@ -116,7 +117,16 @@ if check_ping(remote):
         database[currentTime] = {}
         
         (database[currentTime]["forwardSpeed"],database[currentTime]["forwardRate"]) = iPerfTestActual(remote, "forward",testPort)
+        # print a dot so the user knows it is working
+        sys.stdout.write('.')
+        sys.stdout.flush()
         (database[currentTime]["reverseSpeed"],database[currentTime]["reverseRate"]) = iPerfTestActual(remote, "reverse",testPort)
+        # print a dot so the user knows it is working
+        sys.stdout.write('.')
+        sys.stdout.flush()
+        
+    # print a newline so it looks nice
+    print ""
     
     # output to CSV
     with open(currentDateTime + ".csv", "wb") as csvfile:
