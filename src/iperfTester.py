@@ -20,15 +20,6 @@ def check_ping(hostname):
 
 def iPerfTestActual(hostname,direction,port):
     
-    # we sanitize the tcp port used
-    # we don't allow ports less than 1024 or greater than 65335
-    # because that would be dumb
-    if port in locals():
-        if (port <=1024) and (port >=65535):
-            port = 5201
-    else:
-        port = 5201
-
     # set the iperf variables
     if direction == "reverse":
         direction = "-R"
@@ -66,6 +57,12 @@ def get_ip():
         s.close()
     return IP
 
+if len(sys.argv) == 1:
+    print "Usage: " + sys.argv[0] + " [host] [duration(mins)] [port]"
+    print "port parameter is optional, default is 5201"
+
+exit()
+
 # get the remote iperf endpoint as an argument
 remote = sys.argv[1]
 
@@ -75,9 +72,26 @@ testTime = 10
 # get the total test duration as an argument
 totalDuration = int(sys.argv[2])
 
+#default port is 5201
 testPort = 5201
-# get the test port
-testPort = int(sys.argv[3])
+
+# if the port is not passed as a parameter, don't completely die
+# just use the default port
+try:
+    # get the test port
+    if sys.argv[3]:
+        testPort = int(sys.argv[3])
+    else:
+        testPort = 5201
+
+except IndexError:
+    pass
+
+# we sanitize the tcp port used
+# we don't allow ports less than 1024 or greater than 65335
+# because that would be dumb
+if (testPort <=1024) or (testPort >=65535):
+    testPort = 5201
 
 # we use this to figure out if we're at the end of our test duration
 period = timedelta(minutes=totalDuration)
