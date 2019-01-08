@@ -1,11 +1,22 @@
 #!/usr/bin/python
 
 import subprocess, platform
+import socket, struct
 import sys
 from datetime import datetime, timedelta
 import csv
 import socket
 import time
+
+def get_default_gateway_linux():
+    """Read the default gateway directly from /proc."""
+    with open("/proc/net/route") as fh:
+        for line in fh:
+            fields = line.strip().split()
+            if fields[1] != '00000000' or not int(fields[3], 16) & 2:
+                continue
+
+            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
 
 def check_ping(hostname):
 
@@ -101,6 +112,8 @@ next_time = datetime.now() + period
 # we want to know the IP of THIS endpoint
 local = get_ip()
 
+asset = get_default_gateway_linux()
+
 if check_ping(remote):
     # we use this as the CSV filename for output
     currentDateTime = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0].replace(':','.')
@@ -154,7 +167,7 @@ if check_ping(remote):
     
     # append to master CSV
     # this creates a single CSV for this host for all tests
-    with open(local + ".csv", "ab") as csvfile:
+    with open(asset + ".csv", "ab") as csvfile:
         csvoutput = csv.writer(csvfile, delimiter=',')
         # iterate through the dictionary and
         # drop the value, key pairs as variables that we can reference
