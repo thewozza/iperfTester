@@ -24,20 +24,20 @@ def getNeighbors(IPaddress):
         net_connect = ConnectHandler(**switch)
         hostname = net_connect.find_prompt()
         print "We're in " + hostname
-        
+
         # we always sanely disconnect
         net_connect.disconnect()
         print "Disconnected from " + hostname + " " + IPaddress
-
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        return
 
 def get_default_gateway_linux():
-    """Read the default gateway directly from /proc."""
+    # Read the default gateway directly from /proc.
     with open("/proc/net/route") as fh:
         for line in fh:
             fields = line.strip().split()
             if fields[1] != '00000000' or not int(fields[3], 16) & 2:
                 continue
-
             return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
 
 def check_ping(hostname):
