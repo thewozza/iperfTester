@@ -30,6 +30,7 @@ def getNeighbors(IPaddress):
         print "Disconnected from " + hostname + " " + IPaddress
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
+    return hostname
 
 def get_default_gateway_linux():
     # Read the default gateway directly from /proc.
