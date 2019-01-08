@@ -134,7 +134,7 @@ next_time = datetime.now() + period
 # we want to know the IP of THIS endpoint
 local = get_ip()
 
-asset = get_default_gateway_linux()
+asset = getNeighbors(get_default_gateway_linux())
 
 if check_ping(remote):
     # we use this as the CSV filename for output
