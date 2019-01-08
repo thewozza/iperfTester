@@ -7,6 +7,28 @@ from datetime import datetime, timedelta
 import csv
 import socket
 import time
+from netmiko import ConnectHandler
+from netmiko.ssh_exception import NetMikoTimeoutException,NetMikoAuthenticationException
+
+def getNeighbors(IPaddress):
+    switch = {
+        'device_type': 'cisco_ios',
+        'ip': IPaddress,
+        'username': 'cisco',
+        'password': 'cisco',
+        'secret': 'cisco',
+        'port' : 22          # optional, defaults to 22
+    }
+    try:
+        # this is what we connect to
+        net_connect = ConnectHandler(**switch)
+        hostname = net_connect.find_prompt()
+        print "We're in " + hostname
+        
+        # we always sanely disconnect
+        net_connect.disconnect()
+        print "Disconnected from " + hostname + " " + IPaddress
+
 
 def get_default_gateway_linux():
     """Read the default gateway directly from /proc."""
