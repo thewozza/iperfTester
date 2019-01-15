@@ -10,27 +10,48 @@ import time
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException,NetMikoAuthenticationException
 
-def getNeighbors(IPaddress):
-    switch = {
-        'device_type': 'cisco_ios',
-        'ip': IPaddress,
-        'username': 'cisco',
-        'password': 'cisco',
-        'secret': 'cisco',
-        'port' : 22          # optional, defaults to 22
-    }
+def getHostname():
     try:
-        # this is what we connect to
-        net_connect = ConnectHandler(**switch)
         hostname = net_connect.find_prompt()
-        print "We're in " + hostname
-
-        # we always sanely disconnect
-        net_connect.disconnect()
-        print "Disconnected from " + hostname + " " + IPaddress
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
-    return hostname
+    return hostname[:-1]
+
+def getNeighbors(front,rear):
+    try:
+        command = 'show cdp neighbor ' + front + ' detail | i Device'
+        front_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
+        #command = 'show cdp neighbor ' + front + ' detail | i IP address'
+        #front_ip = net_connect.send_command(command).split("\n")[0].split(":")[1].lstrip()
+        command = 'show cdp neighbor ' + rear + ' detail | i Device'
+        rear_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
+        #command = 'show cdp neighbor ' + front + ' detail | i IP address'
+        #rear_ip = net_connect.send_command(command).split("\n")[0].split(":")[1].lstrip()
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        return
+    #return front_name,front_ip,rear_name,rear_ip
+    return front_name,rear_name
+
+def getAPtelemetry():
+    try:
+        command = 'sh dot11 assoc | i bridge'
+        remote_peer = net_connect.send_command(command).split(" ")[0]
+        
+        command = ' sh dot11 assoc ' + remote_peer + ' | i Current Rate'
+        DR = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0]
+        
+        command = ' sh dot11 assoc ' + remote_peer + ' | i Bandwidth'
+        BW = net_connect.send_command(command).split(":")[2].lstrip()
+        
+        command = ' sh dot11 assoc ' + remote_peer + ' | i Strength'
+        SS = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dBm"
+        
+        command = ' sh dot11 assoc ' + remote_peer + ' | i Noise'
+        SN = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dB"        
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        return
+    #return front_name,front_ip,rear_name,rear_ip
+    return DR,BW,SS,SN
 
 def get_default_gateway_linux():
     # Read the default gateway directly from /proc.
@@ -39,7 +60,8 @@ def get_default_gateway_linux():
             fields = line.strip().split()
             if fields[1] != '00000000' or not int(fields[3], 16) & 2:
                 continue
-            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+            #return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+            return "192.168.2.192"
 
 def check_ping(hostname):
 
@@ -93,18 +115,21 @@ def get_ip():
 
 # die with instructions if someone calls this with no arguments
 if len(sys.argv) == 1:
-    print "Usage: " + sys.argv[0] + " [host] [duration(mins)] [port]"
+    print "Usage: " + sys.argv[0] + " [host] [remoteAP-IP] [duration(mins)] [port]"
     print "port parameter is optional, default is 5201"
     exit()
 
 # get the remote iperf endpoint as an argument
 remote = sys.argv[1]
 
+# get the remote AP endpoint as an argument
+remoteAP = sys.argv[2]
+
 # we do 10s tests
 testTime = 10
 
 # get the total test duration as an argument
-totalDuration = int(sys.argv[2])
+totalDuration = int(sys.argv[3])
 
 #default port is 5201
 testPort = 5201
@@ -113,7 +138,7 @@ testPort = 5201
 # just use the default port
 try:
     # get the test port
-    if sys.argv[3]:
+    if sys.argv[4]:
         testPort = int(sys.argv[3])
     else:
         testPort = 5201
@@ -134,8 +159,48 @@ next_time = datetime.now() + period
 
 # we want to know the IP of THIS endpoint
 local = get_ip()
+assetip = get_default_gateway_linux()
 
-asset = str(getNeighbors(get_default_gateway_linux()))
+switch = {
+    'device_type': 'cisco_ios',
+    'ip': assetip,
+    'username': 'cisco',
+    'password': 'cisco',
+    'secret': 'cisco',
+    'port' : 22          # optional, defaults to 22
+}
+    
+try:
+    # this is what we connect to
+    net_connect = ConnectHandler(**switch)
+    hostname = net_connect.find_prompt()
+except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+    print "Could not reach the switch at " + assetip
+
+asset = getHostname()
+#(neighbor_front_name,neighbor_front_ip,neighbor_rear_name,neighbor_rear_ip) = getNeighbors("gi1","gi1")
+(neighbor_front_name,neighbor_rear_name) = getNeighbors("gi1","gi1")
+
+# we always sanely disconnect
+net_connect.disconnect()
+
+remoteAP = "192.168.2.193"
+
+access_point = {
+    'device_type': 'cisco_ios',
+    'ip': remoteAP,
+    'username': 'cisco',
+    'password': 'cisco',
+    'secret': 'cisco',
+    'port' : 22          # optional, defaults to 22
+}
+    
+try:
+    # this is what we connect to
+    net_connect = ConnectHandler(**access_point)
+    (dataRate,bandwidth,signalStrength,signal2Noise) = getAPtelemetry()
+except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+    print "Could not reach the AP at " + remoteAP
 
 if check_ping(remote):
     # we use this as the CSV filename for output
@@ -158,7 +223,9 @@ if check_ping(remote):
         # this calls the iperfTestActual function
         # the returned variables are the speed, and rate of the test
         # those are dropped into the database[currentTime] nested dictonary
+        
         (database[currentTime]["forwardSpeed"],database[currentTime]["forwardRate"]) = iPerfTestActual(remote, "forward",testPort)
+        
         # print a dot so the user knows it is working
         sys.stdout.write('.')
         sys.stdout.flush()
@@ -166,28 +233,16 @@ if check_ping(remote):
         # this calls the iperfTestActual function
         # the returned variables are the speed, and rate of the test
         # those are dropped into the database[currentTime] nested dictonary
+        
         (database[currentTime]["reverseSpeed"],database[currentTime]["reverseRate"]) = iPerfTestActual(remote, "reverse",testPort)
+        
         # print a dot so the user knows it is working
         sys.stdout.write('.')
         sys.stdout.flush()
         
     # print a newline so it looks nice
     print ""
-    
-    # output to CSV
-    # this creates a CSV for each test run
-    with open(currentDateTime + ".csv", "wb") as csvfile:
-        csvoutput = csv.writer(csvfile, delimiter=',')
         
-        # iterate through the dictionary and
-        # drop the value, key pairs as variables that we can reference
-        # timeLoop is just the current time
-        # dictLoop is a dictionary containing the results of the tests
-        for timeLoop, dictLoop in database.items():
-            csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
-    # sanely close the file handler
-    csvfile.close()
-    
     # append to master CSV
     # this creates a single CSV for this host for all tests
     with open(asset + ".csv", "ab") as csvfile:
@@ -197,9 +252,10 @@ if check_ping(remote):
         # timeLoop is just the current time
         # dictLoop is a dictionary containing the results of the tests
         for timeLoop, dictLoop in database.items():
-            csvoutput.writerow([local,remote,currentDate,timeLoop,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+            csvoutput.writerow([asset,local,remote,currentDate,timeLoop,neighbor_front_name,neighbor_rear_name,dataRate,bandwidth,signalStrength,signal2Noise,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
     # sanely close the file handler
     csvfile.close()
     
 else:
     print "Not pingable, exiting"
+
