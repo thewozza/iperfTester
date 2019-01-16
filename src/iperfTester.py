@@ -1,11 +1,10 @@
 #!/usr/bin/python
 
 import subprocess, platform
-import socket, struct
 import sys
 from datetime import datetime, timedelta
+import socket, struct
 import csv
-import socket
 import time
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException,NetMikoAuthenticationException
@@ -15,42 +14,111 @@ def getHostname():
         hostname = net_connect.find_prompt()
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
+    # we strip off the last character of the prompt
     return hostname[:-1]
 
 def getNeighbors(front,rear):
+    
+    # we expect the interface names to be passed to us
+    # in our case it is going to always be Gi1/19 and Gi1/20
+    # but who knows what the future will bring
+    
     try:
+        # first we get the neighbor on the forward interface
         command = 'show cdp neighbor ' + front + ' detail | i Device'
         front_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
-        #command = 'show cdp neighbor ' + front + ' detail | i IP address'
-        #front_ip = net_connect.send_command(command).split("\n")[0].split(":")[1].lstrip()
+        # then we get the neighbor on the rearward interface
         command = 'show cdp neighbor ' + rear + ' detail | i Device'
         rear_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
-        #command = 'show cdp neighbor ' + front + ' detail | i IP address'
-        #rear_ip = net_connect.send_command(command).split("\n")[0].split(":")[1].lstrip()
+
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
-    #return front_name,front_ip,rear_name,rear_ip
+    # we just return the names of the AP peers
     return front_name,rear_name
 
-def getAPtelemetry():
+def getNeighborWithRoute(testIP):
+    
+    # we look at the asset switch routing table
+    # and figure out what interface the route for the test server is on
+    # then we grab the cdp name and IP of the AP on that link
+    
+    # if we can get the info we need, then we just make sure that the
+    # results are zeroed out
+    car0_facing_ap_name = 0
+    car0_facing_ap_ip = 0
+    
     try:
+        # first get the RIB entry for the test server IP
+        command = 'show ip route ' + testIP + ' | i via Gig'
+        interface = 0
+        
+
+        
+        # we break that output by spaces, and interate through the list
+        # we do this because we can't guarantee that the interface name will
+        # always be in the same spot
+        for interface in net_connect.send_command(command).split(" "):
+            if "Gigabit" in interface:
+                break
+        
+        # this will only be true if we've got a matching route and we've
+        # pulled out the interface name
+        if interface:
+            
+            # now we can get the CDP info for this device
+            # we hope it is an AP
+            command = 'show cdp neighbor ' + interface + ' detail | i Device'
+            car0_facing_ap_name = net_connect.send_command(command)
+            
+            # I got fancy here, and we only keep looking for the IP if we've already
+            # got the name
+            if car0_facing_ap_name:
+                car0_facing_ap_name = car0_facing_ap_name.split(":")[1].lstrip().split(".")[0]
+                command = 'show cdp neighbor ' + interface + ' detail | i IP address'
+                car0_facing_ap_ip = net_connect.send_command(command).split(":")[1].lstrip().rstrip()
+
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        pass
+    
+    # even if it is just zeroes, we still return the info to the main script
+    return car0_facing_ap_name,car0_facing_ap_ip
+
+def getAPtelemetry():
+    
+    # we want to send back the telemetry data for data rate, bandwidth,
+    # signal strength and signal to noise
+    # but if we fail for some reason, let's just return zeroed out fields
+    DR = 0
+    BW = 0
+    SS = 0
+    SN = 0
+    
+    try:
+        # first we get the associations
+        # and we filter out for the one that is a bridge
+        # sometimes this output shows more than one entry
         command = 'sh dot11 assoc | i bridge'
         remote_peer = net_connect.send_command(command).split(" ")[0]
         
+        # then we pull the data we need for the remote peer
+        # DATA RATE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Current Rate'
         DR = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0]
         
+        # BANDWIDTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Bandwidth'
         BW = net_connect.send_command(command).split(":")[2].lstrip()
         
+        # SIGNAL STRENGTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Strength'
         SS = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dBm"
         
+        # SIGNAL TO NOISE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Noise'
         SN = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dB"        
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
-        return
-    #return front_name,front_ip,rear_name,rear_ip
+        pass
+    
     return DR,BW,SS,SN
 
 def get_default_gateway_linux():
@@ -60,8 +128,7 @@ def get_default_gateway_linux():
             fields = line.strip().split()
             if fields[1] != '00000000' or not int(fields[3], 16) & 2:
                 continue
-            #return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
-            return "192.168.2.192"
+            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
 
 def check_ping(hostname):
 
@@ -115,36 +182,35 @@ def get_ip():
 
 # die with instructions if someone calls this with no arguments
 if len(sys.argv) == 1:
-    print "Usage: " + sys.argv[0] + " [host] [remoteAP-IP] [duration(mins)] [port]"
-    print "port parameter is optional, default is 5201"
+    print "Usage: " + sys.argv[0] + " [asset] [local asset switch]"
+    print "asset switch is optional, only needed if the detection doesn't work"
     exit()
 
 # get the remote iperf endpoint as an argument
-remote = sys.argv[1]
-
-# get the remote AP endpoint as an argument
-remoteAP = sys.argv[2]
+#remote = sys.argv[1]
+remote = "10.65.0.10"
 
 # we do 10s tests
 testTime = 10
 
 # get the total test duration as an argument
-totalDuration = int(sys.argv[3])
+#totalDuration = int(sys.argv[2])
+totalDuration = 1
 
 #default port is 5201
 testPort = 5201
 
 # if the port is not passed as a parameter, don't completely die
 # just use the default port
-try:
-    # get the test port
-    if sys.argv[4]:
-        testPort = int(sys.argv[3])
-    else:
-        testPort = 5201
-
-except IndexError:
-    pass
+#try:
+#    # get the test port
+#    if sys.argv[4]:
+#        testPort = int(sys.argv[3])
+#    else:
+#        testPort = 5201
+#
+#except IndexError:
+#    pass
 
 # we sanitize the tcp port used
 # we don't allow ports less than 1024 or greater than 65335
@@ -153,56 +219,101 @@ if (testPort <=1024) or (testPort >=65535):
     print "Port must be between 1024 and 65535"
     exit()
 
+# we can't guarantee that we know the asset name/number
+# so we might have to make it up
+asset = "unknown"
+
+# we hope that the tester can supply the asset name/number
+# but we will try to learn the correct info from the switch too
+try:
+    # get the asset number
+    if sys.argv[1]:
+        asset_argv = sys.argv[1]
+        asset = asset_argv
+except IndexError:
+    pass
+
+# we will try to automatically detect the IP of the local asset switch
+# but if this doesn't work the tester can optionally supply it
+assetip = 0
+try:
+    # get the default gateway
+    if sys.argv[2]:
+        assetip = int(sys.argv[2])
+except IndexError:
+    pass
+
 # we use this to figure out if we're at the end of our test duration
 period = timedelta(minutes=totalDuration)
 next_time = datetime.now() + period
 
 # we want to know the IP of THIS endpoint
 local = get_ip()
-assetip = get_default_gateway_linux()
-
-switch = {
-    'device_type': 'cisco_ios',
-    'ip': assetip,
-    'username': 'cisco',
-    'password': 'cisco',
-    'secret': 'cisco',
-    'port' : 22          # optional, defaults to 22
-}
+if not assetip:
+    assetip = get_default_gateway_linux()
     
-try:
-    # this is what we connect to
-    net_connect = ConnectHandler(**switch)
-    hostname = net_connect.find_prompt()
-except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
-    print "Could not reach the switch at " + assetip
-
-asset = getHostname()
-#(neighbor_front_name,neighbor_front_ip,neighbor_rear_name,neighbor_rear_ip) = getNeighbors("gi1","gi1")
-(neighbor_front_name,neighbor_rear_name) = getNeighbors("gi1","gi1")
-
-# we always sanely disconnect
-net_connect.disconnect()
-
-remoteAP = "192.168.2.193"
-
-access_point = {
-    'device_type': 'cisco_ios',
-    'ip': remoteAP,
-    'username': 'cisco',
-    'password': 'cisco',
-    'secret': 'cisco',
-    'port' : 22          # optional, defaults to 22
-}
-    
-try:
-    # this is what we connect to
-    net_connect = ConnectHandler(**access_point)
-    (dataRate,bandwidth,signalStrength,signal2Noise) = getAPtelemetry()
-except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
-    print "Could not reach the AP at " + remoteAP
-
 if check_ping(remote):
+    
+    # first we want to connect to the local asset switch to gather some info
+    switch = {
+        'device_type': 'cisco_ios',
+        'ip': assetip,
+        'username': 'cisco',
+        'password': 'cisco',
+        'secret': 'cisco',
+        'port' : 22          # optional, defaults to 22
+    }
+        
+    try:
+        # this is what we connect to
+        net_connect = ConnectHandler(**switch)
+        
+        # we want to learn the hostname of the local asset switch
+        # this will tell us exactly where we are
+        asset = net_connect.find_prompt()[:-1]
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        
+        # if we're not able to connect to the switch, we're not going to be able
+        # to learn the connected AP info, or gather telemetry from them         
+        car0_via_ap_name = 0
+        car0_via_ap_ip = 0
+        print "Could not reach the switch at " + assetip
+    else:
+        # this only gets triggered if we're able to ssh into the switch
+        
+        # we learn what AP is in the path for the test iperf system
+        # and we record its name and IP
+        (car0_via_ap_name,car0_via_ap_ip) = getNeighborWithRoute(remote)
+        
+        # we always sanely disconnect
+        net_connect.disconnect()
+
+    dataRate = 0
+    bandwidth = 0
+    signalStrength = 0
+    signal2Noise = 0
+    
+    # if we were able to reach the switch and actually learn what AP is connected
+    # in the path of the testing system, we can gather some AP telemetry
+    if (car0_via_ap_ip and car0_via_ap_name):
+        access_point = {
+            'device_type': 'cisco_ios',
+            'ip': car0_via_ap_ip,
+            'username': 'cisco',
+            'password': 'cisco',
+            'secret': 'cisco',
+            'port' : 22          # optional, defaults to 22
+        }
+            
+        try:
+            # this is what we connect to
+            net_connect = ConnectHandler(**access_point)
+            
+            # here is where we want to learn all the important stuff
+            (dataRate,bandwidth,signalStrength,signal2Noise) = getAPtelemetry()
+        except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+            print "Could not reach the AP at " + car0_via_ap_ip
+    
     # we use this as the CSV filename for output
     currentDateTime = str((datetime.date(datetime.now()))) + "." + str(datetime.time(datetime.now())).split(".")[0].replace(':','.')
     
@@ -252,7 +363,7 @@ if check_ping(remote):
         # timeLoop is just the current time
         # dictLoop is a dictionary containing the results of the tests
         for timeLoop, dictLoop in database.items():
-            csvoutput.writerow([asset,local,remote,currentDate,timeLoop,neighbor_front_name,neighbor_rear_name,dataRate,bandwidth,signalStrength,signal2Noise,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
+            csvoutput.writerow([asset,asset_argv,local,remote,currentDate,timeLoop,car0_via_ap_name,dataRate,bandwidth,signalStrength,signal2Noise,dictLoop["forwardSpeed"],dictLoop["forwardRate"],dictLoop["reverseSpeed"],dictLoop["reverseRate"]])
     # sanely close the file handler
     csvfile.close()
     
