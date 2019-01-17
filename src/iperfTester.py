@@ -14,27 +14,40 @@ def getHostname():
         hostname = net_connect.find_prompt()
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
-    # we strip off the last character of the prompt
     return hostname[:-1]
 
-def getNeighbors(front,rear):
+def getConfiguration():
+    try:
+        config = net_connect.send_command("show run")
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        return
+    return config
+
+def getRawCDP():
+    try:
+        cdp = net_connect.send_command("show cdp neighbor")
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        return
+    return cdp
+
+def getNeighbors(interface):
     
     # we expect the interface names to be passed to us
     # in our case it is going to always be Gi1/19 and Gi1/20
     # but who knows what the future will bring
     
+    neighbor_name = 0
+    neighbor_ip = 0
+    
     try:
-        # first we get the neighbor on the forward interface
-        command = 'show cdp neighbor ' + front + ' detail | i Device'
-        front_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
-        # then we get the neighbor on the rearward interface
-        command = 'show cdp neighbor ' + rear + ' detail | i Device'
-        rear_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
-
+        command = 'show cdp neighbor ' + interface + ' detail | i Device'
+        neighbor_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
+        command = 'show cdp neighbor ' + interface + ' detail | i IP address'
+        neighbor_ip = net_connect.send_command(command).split(":")[1].lstrip().rstrip()
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
     # we just return the names of the AP peers
-    return front_name,rear_name
+    return neighbor_name,neighbor_ip
 
 def getNeighborWithRoute(testIP):
     
@@ -239,7 +252,7 @@ assetip = 0
 try:
     # get the default gateway
     if sys.argv[2]:
-        assetip = int(sys.argv[2])
+        assetip = sys.argv[2]
 except IndexError:
     pass
 
@@ -368,5 +381,99 @@ if check_ping(remote):
     csvfile.close()
     
 else:
-    print "Not pingable, exiting"
+    print "Not pingable, gathering local switch and AP configs"
+    
+    # first we want to connect to the local asset switch to gather some info
+    switch = {
+        'device_type': 'cisco_ios',
+        'ip': assetip,
+        'username': 'cisco',
+        'password': 'cisco',
+        'secret': 'cisco',
+        'port' : 22          # optional, defaults to 22
+    }
+        
+    try:
+        # this is what we connect to
+        net_connect = ConnectHandler(**switch)
+        
+        # we want to learn the hostname of the local asset switch
+        # this will tell us exactly where we are
+        asset = net_connect.find_prompt()[:-1]
+    except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+        
+        # if we're not able to connect to the switch, we're not going to be able
+        # to learn the connected AP info, or gather configs from them         
+        forwardAPname = 0
+        forwardAPaddress = 0
+        rearwardAPname = 0
+        rearwardAPaddress = 0
+        
+        print "Could not reach the switch at " + assetip
+    else:
+        # this only gets triggered if we're able to ssh into the switch
+        
+        troublefile = open(asset + "-" + str(datetime.now()) + ".txt","w")
+    
+        # we learn what AP is in the path for the test iperf system
+        # and we record its name and IP
+        (forwardAPname,forwardAPaddress) = getNeighbors("Gi1/19")
+        (rearwardAPname,rearwardAPaddress) = getNeighbors("Gi1/20")
 
+        troublefile.write(getRawCDP())
+        troublefile.write(getConfiguration())
+    
+        # we always sanely disconnect
+        net_connect.disconnect()
+
+    # if we were able to reach the switch and actually learn what AP is connected
+    # in the path of the testing system, we can gather some AP info
+    if (forwardAPname):
+        access_point = {
+            'device_type': 'cisco_ios',
+            'ip': forwardAPaddress,
+            'username': 'cisco',
+            'password': 'cisco',
+            'secret': 'cisco',
+            'port' : 22          # optional, defaults to 22
+        }
+            
+        try:
+            # this is what we connect to
+            net_connect = ConnectHandler(**access_point)
+            
+            troublefile.write(getRawCDP())
+            troublefile.write(getConfiguration())
+            
+        except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+            print "Could not reach the AP at " + forwardAPaddress
+        else:
+            # we always sanely disconnect
+            net_connect.disconnect()
+    
+    # if we were able to reach the switch and actually learn what AP is connected
+    # in the path of the testing system, we can gather some AP info
+    if (rearwardAPname):
+        access_point = {
+            'device_type': 'cisco_ios',
+            'ip': rearwardAPaddress,
+            'username': 'cisco',
+            'password': 'cisco',
+            'secret': 'cisco',
+            'port' : 22          # optional, defaults to 22
+        }
+            
+        try:
+            # this is what we connect to
+            net_connect = ConnectHandler(**access_point)
+            
+            troublefile.write(getRawCDP())
+            troublefile.write(getConfiguration())
+            
+        except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
+            print "Could not reach the AP at " + rearwardAPaddress
+        else:
+            # we always sanely disconnect
+            net_connect.disconnect()
+    
+    troublefile.close()
