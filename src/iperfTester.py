@@ -117,24 +117,46 @@ def getAPtelemetry():
         # and we filter out for the one that is a bridge
         # sometimes this output shows more than one entry
         command = 'sh dot11 assoc | i bridge'
-        remote_peer = net_connect.send_command(command).split(" ")[0]
-        
+        remote_peer = net_connect.send_command(command)
+        if remote_peer:
+            remote_peer = remote_peer.split(" ")[0]
+        else:
+            remote_peer = 0
+            
         # then we pull the data we need for the remote peer
         # DATA RATE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Current Rate'
-        DR = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0]
-        
+        DR = net_connect.send_command(command)
+        if DR:
+            DR = DR.split(":")[1].lstrip().split(" ")[0]
+        else:
+            DR = 0
+            
         # BANDWIDTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Bandwidth'
-        BW = net_connect.send_command(command).split(":")[2].lstrip()
+        BW = net_connect.send_command(command)
+        if BW:
+            BW = BW.split(":")[2].lstrip()
+        else:
+            BW = 0
+            
         
         # SIGNAL STRENGTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Strength'
-        SS = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dBm"
-        
+        SS = net_connect.send_command(command)
+        if SS:
+            SS = SS.split(":")[1].lstrip().split(" ")[0] + " dBm"
+        else:
+            SS = 0
+            
         # SIGNAL TO NOISE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Noise'
-        SN = net_connect.send_command(command).split(":")[1].lstrip().split(" ")[0] + " dB"        
+        SN = net_connect.send_command(command)
+        if SN:
+            SN = SN.split(":")[1].lstrip().split(" ")[0] + " dB"
+        else:
+            SN = 0
+                    
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         pass
     
