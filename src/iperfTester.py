@@ -41,9 +41,15 @@ def getNeighbors(interface):
     
     try:
         command = 'show cdp neighbor ' + interface + ' detail | i Device'
-        neighbor_name = net_connect.send_command(command).split(":")[1].lstrip().split(".")[0]
-        command = 'show cdp neighbor ' + interface + ' detail | i IP address'
-        neighbor_ip = net_connect.send_command(command).split(":")[1].lstrip().rstrip()
+        neighbor_name = net_connect.send_command(command)
+        
+        # I got fancy here, and we only keep looking for the IP if we've already
+        # got the name
+        if neighbor_name:
+            neighbor_name = neighbor_name.split(":")[1].lstrip().split(".")[0]
+            command = 'show cdp neighbor ' + interface + ' detail | i IP address'
+            neighbor_ip = net_connect.send_command(command)
+            neighbor_ip = neighbor_ip.split(":")[1].lstrip().rstrip()
     except (NetMikoTimeoutException,NetMikoAuthenticationException,ValueError):
         return
     # we just return the names of the AP peers
@@ -410,6 +416,7 @@ else:
         rearwardAPaddress = 0
         
         print "Could not reach the switch at " + assetip
+        quit()
     else:
         # this only gets triggered if we're able to ssh into the switch
         
