@@ -127,7 +127,7 @@ def getAPtelemetry():
         # DATA RATE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Current Rate'
         DR = net_connect.send_command(command)
-        if DR:
+        if (DR and not ("^" in DR)):
             DR = DR.split(":")[1].lstrip().split(" ")[0]
         else:
             DR = 0
@@ -135,7 +135,7 @@ def getAPtelemetry():
         # BANDWIDTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Bandwidth'
         BW = net_connect.send_command(command)
-        if BW:
+        if (BW and not ("^" in BW)):
             BW = BW.split(":")[2].lstrip()
         else:
             BW = 0
@@ -144,7 +144,7 @@ def getAPtelemetry():
         # SIGNAL STRENGTH
         command = ' sh dot11 assoc ' + remote_peer + ' | i Strength'
         SS = net_connect.send_command(command)
-        if SS:
+        if (SS and not ("^" in SS)):
             SS = SS.split(":")[1].lstrip().split(" ")[0] + " dBm"
         else:
             SS = 0
@@ -152,7 +152,7 @@ def getAPtelemetry():
         # SIGNAL TO NOISE
         command = ' sh dot11 assoc ' + remote_peer + ' | i Noise'
         SN = net_connect.send_command(command)
-        if SN:
+        if (SN and not ("^" in SN)):
             SN = SN.split(":")[1].lstrip().split(" ")[0] + " dB"
         else:
             SN = 0
